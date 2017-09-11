@@ -168,40 +168,21 @@ void setup(void)
 /**************************************************************************/
 void loop(void)
 {
-  char input[BUFSIZE + 1];
-  int x, y, moveSpeed;
-  
-  Serial.println(F("Input X"));
+  char input[BUFSIZE + 1], cmd;
+
+  Serial.println(F("Input Command (U - Up, D - Down, L - Left, R - Right, A - LClick, B - RClick, S - Scroll)"));
   getUserInput(input, BUFSIZE);
-  x = atoi(input);
-  
-  Serial.println(F("Input Y"));
-  getUserInput(input, BUFSIZE);
-  y = atoi(input);
+  cmd = input[0];
+  Serial.println(cmd);
 
-  Serial.println(F("Input Move Speed"));
-  getUserInput(input, BUFSIZE);
-  moveSpeed = atoi(input);
-
-  String buf = String("x = ") + String(x) + String(", y = ") + String(y) + String(", Move Speed = ") + String(moveSpeed);
-  Serial.println(buf);
-
-  // Send command
-  int i = 0;
-  int j = 0;
-  String mouseMove = String("AT+BleHidMouseMove=");
-  while (i < x && j < y) {
-    i = (i < x) ? i + moveSpeed : i;
-    j = (j < y) ? j + moveSpeed : j;
-    String bleCmd = mouseMove + String(moveSpeed) + String(",") + String(moveSpeed);
-    ble.println(bleCmd);
-
-    // Check response status
-    delay(2);
-    if (ble.waitForOK() == 0)
-      ble.println(bleCmd);
+  if (cmd == 'A' || cmd == 'B') {
+    clickCommand(cmd);
   }
-
+  else if (cmd == 'S') {
+    scrollCommand();
+  }
+  else
+    moveCommand(cmd);
 
 
 
@@ -250,6 +231,124 @@ void loop(void)
     @brief  Checks for user input (via the Serial Monitor)
 */
 /**************************************************************************/
+void moveCommand(char dir)
+{
+  char input[BUFSIZE + 1];
+  int mag, spd;
+  int x, y;
+
+  Serial.println(F("Input Magnitude"));
+  getUserInput(input, BUFSIZE);
+  mag = atoi(input);
+
+  Serial.println(F("Input Move Speed"));
+  getUserInput(input, BUFSIZE);
+  spd = atoi(input);
+
+  // Up - Reverse spd
+  if ('U' == dir || 'D' == dir)
+  {
+    y = -mag;
+    spd = -spd;
+    // Send command
+    int j = 0;
+    String mouseMove = String("AT+BleHidMouseMove=");
+    String bleCmd;
+
+    while (j > y) {
+      j += spd;
+      if (dir == 'U')
+        bleCmd = mouseMove + String(0) + String(",") + String(spd);
+      else if (dir == 'D')
+        bleCmd = mouseMove + String(0) + String(",") + String(-1 * spd);
+      ble.println(bleCmd);
+
+      // Check response status
+      delay(2);
+      if (ble.waitForOK() == 0)
+        ble.println(bleCmd);
+    }
+  }
+  else if ('L' == dir || 'R' == dir)
+  {
+    x = -mag;
+    spd = -spd;
+    // Send command
+    int j = 0;
+    String mouseMove = String("AT+BleHidMouseMove=");
+    String bleCmd;
+
+    while (j > x) {
+      j += spd;
+      if (dir == 'L')
+        bleCmd = mouseMove + String(spd) + String(",") + String(0);
+      else if (dir == 'R')
+        bleCmd = mouseMove + String(-1 * spd) + String(",") + String(0);
+      ble.println(bleCmd);
+
+      // Check response status
+      delay(2);
+      if (ble.waitForOK() == 0)
+        ble.println(bleCmd);
+    }
+  }
+}
+
+void scrollCommand()
+{
+  String scrollCmd = String("AT+BleHidMouseMove=,,");
+  char input[BUFSIZE + 1];
+  int mag, spd;
+
+  Serial.println(F("Input Magnitude"));
+  getUserInput(input, BUFSIZE);
+  mag = atoi(input);
+
+  Serial.println(F("Input Move Speed"));
+  getUserInput(input, BUFSIZE);
+  spd = atoi(input);
+
+
+  int i = 0;
+  int isMagNegative = 0;
+  if (mag < 0)
+  {
+    isMagNegative = 1;
+    mag = -mag;
+  }
+  String bleCmd;
+  while (i < mag)
+  {
+    i += spd;
+
+    if (isMagNegative)
+      bleCmd = scrollCmd + String(spd);
+    else
+      bleCmd = scrollCmd + String(-1*spd);
+
+    // Positive mag is scrolling up
+    ble.println(bleCmd);
+    delay(2);
+    if (ble.waitForOK() == 0)
+      ble.println(bleCmd);
+  }
+}
+
+void clickCommand(char button)
+{
+  String clickCmd = String("AT+BLEHIDMOUSEBUTTON=");
+
+  if (button == 'A')
+    button = 'L';
+  else if (button == 'B')
+    button = 'R';
+
+  String bleCmd = clickCmd + String(button) + String(',') + String("CLICK");
+  ble.println(bleCmd);
+
+}
+
+
 void getUserInput(char buffer[], uint8_t maxSize)
 {
   memset(buffer, 0, maxSize);
