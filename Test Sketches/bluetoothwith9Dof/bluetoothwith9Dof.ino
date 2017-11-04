@@ -241,7 +241,7 @@ void moveCommand(int mag)
 {
   // Right = -ve
   String mouseMove = String("AT+BleHidMouseMove=");
-  String bleCmd = mouseMove + String(-mag / 1000) + String(",") + String(0);
+  String bleCmd = mouseMove + String(-mag / 200) + String(",") + String(0);
   ble.println(bleCmd);
   delay(2);
   if (ble.waitForOK() == 0)
@@ -250,7 +250,7 @@ void moveCommand(int mag)
 void moveCommandup(int mag)
 {
   String mouseMove = String("AT+BleHidMouseMove=");
-  String bleCmd = mouseMove + String(0) + String(",") + String(-mag / 1000) ;
+  String bleCmd = mouseMove + String(0) + String(",") + String(-mag / 200) ;
   ble.println(bleCmd);
   delay(2);
   if (ble.waitForOK() == 0)
