@@ -22,6 +22,7 @@
 #define BNO055_SAMPLERATE_DELAY_MS (100)
 
 Adafruit_BNO055 bno = Adafruit_BNO055();
+SoftwareTimer integrationTimer;
 
 // BLE Service
 BLEDis  bledis;
@@ -61,14 +62,21 @@ void setup()
   Serial.println("Calibration status values: 0=uncalibrated, 3=fully calibrated");
 
   //
+  // Start Integral Calcuation
+  //
+  //integrationTimer.begin(100, integration_timer_callback);
+  //integrationTimer.start();
+
+
+  //
   // Bluetooth BLEUart
   //
   Serial.println("Bluefruit52 BLEUART Example");
   Serial.println("---------------------------\n");
 
-  // Initialize blinkTimer for 1000 ms and start it
-  blinkTimer.begin(1000, blink_timer_callback);
-  blinkTimer.start();
+  //  // Initialize blinkTimer for 1000 ms and start it
+  //  blinkTimer.begin(1000, blink_timer_callback);
+  //  blinkTimer.start();
 
   // Setup the BLE LED to be enabled on CONNECT
   // Note: This is actually the default behaviour, but provided
@@ -145,6 +153,30 @@ int sendBLEUartFlag() {
     return 0;
 }
 
+// integration variables
+double accelX_now = 0;
+double accelX_prev = 0;
+double velX_now = 0;
+double velX_prev = 0;
+
+double accelY_now = 0;
+double accelY_prev = 0;
+double velY_now = 0;
+double velY_prev = 0;
+
+double accelZ_now = 0;
+double accelZ_prev = 0;
+double velZ_now = 0;
+double velZ_prev = 0;
+
+double posX = 0;
+double posY = 0;
+double posZ = 0;
+
+imu::Vector<3> euler;
+imu::Vector<3> accel;
+imu::Quaternion quat;
+
 void loop()
 {
   // Possible vector values can be:
@@ -155,66 +187,111 @@ void loop()
   // - VECTOR_LINEARACCEL   - m/s^2
   // - VECTOR_GRAVITY       - m/s^2
 
-  // Infinite Counter
+  // String buf
   char buf[64];
 
   while (sendBLEUartFlag()) {
     //itoa(counter,buf,10);
+    //euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
+    //accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+    quat = bno.getQuat();
+    euler = quat.toEuler();
 
-    imu::Vector<3> euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
-    imu::Vector<3> accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
 
+    // intCalc();
+
+    // posX
+    sprintf(buf, "posX=%d", posX);
+    bleuart.write( buf, strlen(buf) );
+    //Serial.println(buf);
+
+    // posY
+    sprintf(buf, "posY=%d", posY);
+    bleuart.write( buf, strlen(buf) );
+    //Serial.println(buf);
+
+    // posZ
+    sprintf(buf, "posZ=%d", posZ);
+    bleuart.write( buf, strlen(buf) );
+    //Serial.println(buf);
     /* Display the floating point data */
     Serial.print("eulerX: ");
-    Serial.print(euler.x());
+    Serial.print((int)(euler.x()*180/3.14159));
     Serial.print(" eulerY: ");
-    Serial.print(euler.y());
+    Serial.print((int)(euler.y()*180/3.14159));
     Serial.print(" eulerZ: ");
-    Serial.print(euler.z());
-    Serial.print("\t\t");
-
-    Serial.print("accelX: ");
-    Serial.print(accel.x());
-    Serial.print(" accel: ");
-    Serial.print(accel.y());
-    Serial.print(" accelZ: ");
-    Serial.print(accel.z());
+    Serial.print((int)(euler.z()*180/3.14159));
     Serial.println("\t\t");
 
+//    Serial.print("accelX: ");
+//    Serial.print(accel.x());
+//    Serial.print(" accel: ");
+//    Serial.print(accel.y());
+//    Serial.print(" accelZ: ");
+//    Serial.print(accel.z());
+//    Serial.print("\t\t");
+//
+//    Serial.print("velX: ");
+//    sprintf(buf, "%.6f", velX_now);
+//    Serial.print(buf);
+//
+//    Serial.print(" velY: ");
+//    sprintf(buf, "%.6f", velY_now);
+//    Serial.print(buf);
+//
+//    Serial.print(" velZ: ");
+//    sprintf(buf, "%.6f", velZ_now);
+//    Serial.print(buf);
+//    Serial.print("\t\t");
+//
+//
+//    Serial.print("posX: ");
+//    sprintf(buf, "%.6f", posX);
+//    Serial.print(buf);
+//
+//    Serial.print(" posY: ");
+//    sprintf(buf, "%.6f", posY);
+//    Serial.print(buf);
+//
+//    Serial.print(" posZ: ");
+//    sprintf(buf, "%.6f", posZ);
+//    Serial.print(buf);
+//    Serial.println("\t\t");
 
 
     // X
-    sprintf(buf, "eulerX=%d", (int)euler.x());
+    sprintf(buf, "eulerX=%d", (int)(euler.x()*180/3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // Y
-    sprintf(buf, "eulerY=%d", (int)euler.y());
+    sprintf(buf, "eulerY=%d", (int)(euler.y()*180/3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // Z
-    sprintf(buf, "eulerZ=%d", (int)euler.z());
+    sprintf(buf, "eulerZ=%d", (int)(euler.z()*180/3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
 
-    // accelX
-    sprintf(buf, "accelX=%d", (int)accel.x());
+    // posX
+    sprintf(buf, "posX=%d", (int)posX);
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
-    // accelY
-    sprintf(buf, "accelY=%d", (int)accel.y());
+    // posY
+    sprintf(buf, "posY=%d", (int)posY);
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
-    // accelZ
-    sprintf(buf, "accelZ=%d", (int)accel.z());
+    // posZ
+    sprintf(buf, "posZ=%d", (int)posZ);
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
-    delay(10);
+
+    // delay(10);
   }
 
   // Request CPU to enter low-power mode until an event/interrupt occurs
@@ -247,12 +324,6 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
    More information http://www.freertos.org/RTOS-software-timer.html
 */
-void blink_timer_callback(TimerHandle_t xTimerID)
-{
-  (void) xTimerID;
-  digitalToggle(LED_RED);
-}
-
 /**
    RTOS Idle callback is automatically invoked by FreeRTOS
    when there are no active threads. E.g when loop() calls delay() and
@@ -287,5 +358,63 @@ void rtos_idle_callback(void)
 
   // Request CPU to enter low-power mode until an event/interrupt occurs
   waitForEvent();
+}
+
+void intCalc() {
+  double dt = 0.01;
+
+  // Sample Acceleration
+  accelX_now = accel.x();
+  accelY_now = accel.y();
+  accelZ_now = accel.z();
+
+  if (abs(accelX_now) < 0.2)
+    accelX_now = 0;
+  if (abs(accelY_now) < 0.2)
+    accelY_now = 0;
+  if (abs(accelZ_now) < 0.2)
+    accelZ_now = 0;
+
+  // Integrate once to get velocity
+  velX_now = velX_prev + dt * (accelX_now - accelX_prev);
+  velY_now = velY_prev + dt * (accelY_now - accelY_prev);
+  velZ_now = velZ_prev + dt * (accelZ_now - accelZ_prev);
+
+  // Integrate again to get position
+  posX = posX + dt * (velX_now - velX_prev);
+  posY = posY + dt * (velY_now - velY_prev);
+  posZ = posZ + dt * (velZ_now - velZ_prev);
+
+  // replace prev with now
+  accelX_prev = accelX_now;
+  accelY_prev = accelY_now;
+  accelZ_prev = accelZ_now;
+
+  velX_prev = velX_now;
+  velY_prev = velY_now;
+  velZ_prev = velZ_now;
+}
+
+void integration_timer_callback(TimerHandle_t xTimerID)
+{
+  (void) xTimerID;
+
+  intCalc();
+
+  char buf[64];
+  // posX
+  sprintf(buf, "posX=%d", posX);
+  bleuart.write( buf, strlen(buf) );
+  //Serial.println(buf);
+
+  // posY
+  sprintf(buf, "posY=%d", posY);
+  bleuart.write( buf, strlen(buf) );
+  //Serial.println(buf);
+
+  // posZ
+  sprintf(buf, "posZ=%d", posZ);
+  bleuart.write( buf, strlen(buf) );
+  //Serial.println(buf);
 }
 
