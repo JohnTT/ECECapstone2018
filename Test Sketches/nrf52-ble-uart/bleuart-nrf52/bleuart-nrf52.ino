@@ -20,9 +20,10 @@
 #include <utility/imumaths.h>
 
 #define BNO055_SAMPLERATE_DELAY_MS (100)
+#define ACCEL_MIN 0.4
+#define AVG_SIZE 20
 
 Adafruit_BNO055 bno = Adafruit_BNO055();
-SoftwareTimer integrationTimer;
 
 // BLE Service
 BLEDis  bledis;
@@ -60,12 +61,6 @@ void setup()
   bno.setExtCrystalUse(true);
 
   Serial.println("Calibration status values: 0=uncalibrated, 3=fully calibrated");
-
-  //
-  // Start Integral Calcuation
-  //
-  //integrationTimer.begin(100, integration_timer_callback);
-  //integrationTimer.start();
 
 
   //
@@ -153,29 +148,64 @@ int sendBLEUartFlag() {
     return 0;
 }
 
-// integration variables
-double accelX_now = 0;
-double accelX_prev = 0;
-double velX_now = 0;
-double velX_prev = 0;
-
-double accelY_now = 0;
-double accelY_prev = 0;
-double velY_now = 0;
-double velY_prev = 0;
-
-double accelZ_now = 0;
-double accelZ_prev = 0;
-double velZ_now = 0;
-double velZ_prev = 0;
-
 double posX = 0;
 double posY = 0;
 double posZ = 0;
+int Kpos = 100000; // Gain of Displacement
 
 imu::Vector<3> euler;
 imu::Vector<3> accel;
 imu::Quaternion quat;
+
+unsigned long prevTime = 0;
+float EMA_a = 0.9;
+
+class sample {
+  public:
+    double x[3];
+    double y[3];
+    double z[3];
+} dispSample, velSample, accelSample, EMA_S;
+
+class sampleAvg {
+  public:
+    sampleAvg() {
+      idx = 0;
+    }
+
+    void addSample(double x, double y, double z) {
+      xS[idx] = x;
+      yS[idx] = y;
+      zS[idx] = z;
+      idx++;
+      if (idx >= AVG_SIZE)
+        idx = 0;
+    }
+    double averageX() {
+      double sum = 0;
+      for (int i=0; i<AVG_SIZE; i++)
+        sum+= xS[i];
+      return sum/(AVG_SIZE*1.0);
+    }
+    double averageY() {
+      double sum = 0;
+      for (int i=0; i<AVG_SIZE; i++)
+        sum+= yS[i];
+      return sum/(AVG_SIZE*1.0);
+    }
+    double averageZ() {
+      double sum = 0;
+      for (int i=0; i<AVG_SIZE; i++)
+        sum+= zS[i];
+      return sum/(AVG_SIZE*1.0);
+    }
+
+  private:
+    double xS[AVG_SIZE];
+    double yS[AVG_SIZE];
+    double zS[AVG_SIZE];
+    int idx;
+} pos;
 
 void loop()
 {
@@ -191,86 +221,47 @@ void loop()
   char buf[64];
 
   while (sendBLEUartFlag()) {
-    //itoa(counter,buf,10);
-    //euler = bno.getVector(Adafruit_BNO055::VECTOR_EULER);
     //accel = bno.getVector(Adafruit_BNO055::VECTOR_LINEARACCEL);
+    accel = bno.getVector(Adafruit_BNO055::VECTOR_ACCELEROMETER);
     quat = bno.getQuat();
     euler = quat.toEuler();
 
 
-    // intCalc();
+    //    Serial.print("Time[ms]: ");
+    //    Serial.println(prevTime);
+    intCalc((millis() - prevTime) / 1000.0);
+    prevTime = millis();
 
     // posX
-    sprintf(buf, "posX=%d", posX);
+    sprintf(buf, "posX=%d", (int)pos.averageX());
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // posY
-    sprintf(buf, "posY=%d", posY);
+    sprintf(buf, "posY=%d", (int)pos.averageY());
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // posZ
-    sprintf(buf, "posZ=%d", posZ);
+    sprintf(buf, "posZ=%d", (int)pos.averageZ());
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
     /* Display the floating point data */
-    Serial.print("eulerX: ");
-    Serial.print((int)(euler.x()*180/3.14159));
-    Serial.print(" eulerY: ");
-    Serial.print((int)(euler.y()*180/3.14159));
-    Serial.print(" eulerZ: ");
-    Serial.print((int)(euler.z()*180/3.14159));
-    Serial.println("\t\t");
-
-//    Serial.print("accelX: ");
-//    Serial.print(accel.x());
-//    Serial.print(" accel: ");
-//    Serial.print(accel.y());
-//    Serial.print(" accelZ: ");
-//    Serial.print(accel.z());
-//    Serial.print("\t\t");
-//
-//    Serial.print("velX: ");
-//    sprintf(buf, "%.6f", velX_now);
-//    Serial.print(buf);
-//
-//    Serial.print(" velY: ");
-//    sprintf(buf, "%.6f", velY_now);
-//    Serial.print(buf);
-//
-//    Serial.print(" velZ: ");
-//    sprintf(buf, "%.6f", velZ_now);
-//    Serial.print(buf);
-//    Serial.print("\t\t");
-//
-//
-//    Serial.print("posX: ");
-//    sprintf(buf, "%.6f", posX);
-//    Serial.print(buf);
-//
-//    Serial.print(" posY: ");
-//    sprintf(buf, "%.6f", posY);
-//    Serial.print(buf);
-//
-//    Serial.print(" posZ: ");
-//    sprintf(buf, "%.6f", posZ);
-//    Serial.print(buf);
-//    Serial.println("\t\t");
+    debugSerial();
 
 
     // X
-    sprintf(buf, "eulerX=%d", (int)(euler.x()*180/3.14159));
+    sprintf(buf, "eulerX=%d", (int)(euler.x() * 180 / 3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // Y
-    sprintf(buf, "eulerY=%d", (int)(euler.y()*180/3.14159));
+    sprintf(buf, "eulerY=%d", (int)(euler.y() * 180 / 3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
     // Z
-    sprintf(buf, "eulerZ=%d", (int)(euler.z()*180/3.14159));
+    sprintf(buf, "eulerZ=%d", (int)(euler.z() * 180 / 3.14159));
     bleuart.write( buf, strlen(buf) );
     //Serial.println(buf);
 
@@ -291,7 +282,7 @@ void loop()
     //Serial.println(buf);
 
 
-    // delay(10);
+    //delay(50);
   }
 
   // Request CPU to enter low-power mode until an event/interrupt occurs
@@ -314,6 +305,41 @@ void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
   Serial.println();
   Serial.println("Disconnected");
+}
+
+//
+
+void debugSerial()
+{
+  char buf[64];
+  //    Serial.print("eulerX: ");
+  //    Serial.print((int)(euler.x()*180/PI));
+  //    Serial.print(" eulerY: ");
+  //    Serial.print((int)(euler.y()*180/PI));
+  //    Serial.print(" eulerZ: ");
+  //    Serial.print((int)(euler.z()*180/PI));
+  //    Serial.println("\t\t");
+
+  //    Serial.print("accelX: ");
+  //    Serial.print(accelSample.x[0]);
+  //    Serial.print(" accelY: ");
+  //    Serial.print(accelSample.y[0]);
+  //    Serial.print(" accelZ: ");
+  //    Serial.print(accelSample.z[0]);
+  //    Serial.println("\t\t");
+
+  Serial.print("posX: ");
+  sprintf(buf, "%.6f", pos.averageX());
+  Serial.print(buf);
+
+  Serial.print(" posY: ");
+  sprintf(buf, "%.6f", pos.averageY());
+  Serial.print(buf);
+
+  Serial.print(" posZ: ");
+  sprintf(buf, "%.6f", pos.averageZ());
+  Serial.print(buf);
+  Serial.println("\t\t");
 }
 
 /**
@@ -360,61 +386,55 @@ void rtos_idle_callback(void)
   waitForEvent();
 }
 
-void intCalc() {
-  double dt = 0.01;
+void intCalc(double dt) {
+  // Sample
+  accelSample.x[0] = accel.x();
+  accelSample.y[0] = accel.y();
+  accelSample.z[0] = accel.z();
 
-  // Sample Acceleration
-  accelX_now = accel.x();
-  accelY_now = accel.y();
-  accelZ_now = accel.z();
+  // Set Min threshold to remove noise
+  //  accelSample.x[0] = (abs(accelSample.x[0]) > ACCEL_MIN) ? accelSample.x[0] : 0.0;
+  //  accelSample.y[0] = (abs(accelSample.y[0]) > ACCEL_MIN) ? accelSample.y[0] : 0.0;
+  //  accelSample.z[0] = (abs(accelSample.z[0]) > ACCEL_MIN) ? accelSample.z[0] : 0.0;
 
-  if (abs(accelX_now) < 0.2)
-    accelX_now = 0;
-  if (abs(accelY_now) < 0.2)
-    accelY_now = 0;
-  if (abs(accelZ_now) < 0.2)
-    accelZ_now = 0;
+  // EMA High Pass Filtering
+  // https://www.norwegiancreations.com/2016/03/arduino-tutorial-simple-high-pass-band-pass-and-band-stop-filtering/
+  EMA_S.x[0] = (EMA_a * accelSample.x[0]) + ((1 - EMA_a) * EMA_S.x[0]);
+  EMA_S.y[0] = (EMA_a * accelSample.y[0]) + ((1 - EMA_a) * EMA_S.y[0]);
+  EMA_S.z[0] = (EMA_a * accelSample.z[0]) + ((1 - EMA_a) * EMA_S.z[0]);
 
-  // Integrate once to get velocity
-  velX_now = velX_prev + dt * (accelX_now - accelX_prev);
-  velY_now = velY_prev + dt * (accelY_now - accelY_prev);
-  velZ_now = velZ_prev + dt * (accelZ_now - accelZ_prev);
+  accelSample.x[0] -= EMA_S.x[0];
+  accelSample.y[0] -= EMA_S.y[0];
+  accelSample.z[0] -= EMA_S.z[0];
 
-  // Integrate again to get position
-  posX = posX + dt * (velX_now - velX_prev);
-  posY = posY + dt * (velY_now - velY_prev);
-  posZ = posZ + dt * (velZ_now - velZ_prev);
+  // Naive integration with dt^2
+  posX += Kpos * dt * dt * accelSample.x[0];
+  posY += Kpos * dt * dt * accelSample.y[0];
+  posZ += Kpos * dt * dt * accelSample.z[0];
 
-  // replace prev with now
-  accelX_prev = accelX_now;
-  accelY_prev = accelY_now;
-  accelZ_prev = accelZ_now;
+  // Add posX,posY,posZ to pos class
+  pos.addSample(posX, posY, posZ);
 
-  velX_prev = velX_now;
-  velY_prev = velY_now;
-  velZ_prev = velZ_now;
+  //  // DSP Transfer Function - Rectangular
+  //  posX += accelSample.x[0] - 2*accelSample.x[1] + accelSample.x[2];
+  //  posY += accelSample.y[0] - 2*accelSample.y[1] + accelSample.y[2];
+  //  posZ += accelSample.z[0] - 2*accelSample.z[1] + accelSample.z[2];
+
+
+
+  pushSamples();
 }
 
-void integration_timer_callback(TimerHandle_t xTimerID)
+void pushSamples()
 {
-  (void) xTimerID;
+  // Push Data Forward one Space
+  accelSample.x[2] = accelSample.x[1];
+  accelSample.y[2] = accelSample.x[1];
+  accelSample.z[2] = accelSample.x[1];
 
-  intCalc();
+  accelSample.x[1] = accelSample.x[0];
+  accelSample.y[1] = accelSample.x[0];
+  accelSample.z[1] = accelSample.x[0];
 
-  char buf[64];
-  // posX
-  sprintf(buf, "posX=%d", posX);
-  bleuart.write( buf, strlen(buf) );
-  //Serial.println(buf);
-
-  // posY
-  sprintf(buf, "posY=%d", posY);
-  bleuart.write( buf, strlen(buf) );
-  //Serial.println(buf);
-
-  // posZ
-  sprintf(buf, "posZ=%d", posZ);
-  bleuart.write( buf, strlen(buf) );
-  //Serial.println(buf);
 }
 
